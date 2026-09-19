@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom';
 
-import BarList from '../../components/BarList.jsx';
 import DataTable from '../../components/DataTable.jsx';
-import { ScorePill, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { DeadlineBadge, ScorePill, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import { formatDateTime } from '../../utils/format.js';
 
 const STATUS_COLORS = {
@@ -15,6 +14,7 @@ const STATUS_COLORS = {
 
 export function IssueStatusPanel({ items }) {
   if (!items?.length) return null;
+  const max = Math.max(...items.map((item) => item.value || 0), 1);
   return (
     <section className="card">
       <div className="card-title">
@@ -23,13 +23,30 @@ export function IssueStatusPanel({ items }) {
           查看全部 →
         </Link>
       </div>
-      <BarList
-        items={items.map((item) => ({
-          name: item.name,
-          value: item.value,
-          color: STATUS_COLORS[item.name] || '#0f766e',
-        }))}
-      />
+      <div className="bar-list">
+        {items.map((item) => (
+          <div className="bar-row" key={item.name}>
+            <span title={item.name}>{item.name}</span>
+            <div className="bar-track">
+              <div
+                className="bar-fill"
+                style={{
+                  width: `${((item.value || 0) / max) * 100}%`,
+                  background: STATUS_COLORS[item.name] || '#0f766e',
+                }}
+              />
+            </div>
+            <span className="bar-value">
+              {item.value}
+              {item.overdue > 0 ? (
+                <span className="tag tag-danger overdue-count" title="该状态列中超期未闭环数量">
+                  超期 {item.overdue}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -139,7 +156,16 @@ export function RecentIssuesPanel({ items }) {
           },
           { key: 'restroom', title: '公厕', render: (row) => row.restroom?.name ?? '-' },
           { key: 'severity', title: '程度', render: (row) => <SeverityTag severity={row.severity} /> },
-          { key: 'status', title: '状态', render: (row) => <StatusTag status={row.status} /> },
+          {
+            key: 'status',
+            title: '状态',
+            render: (row) => (
+              <span className="inline-col">
+                <StatusTag status={row.status} />
+                <DeadlineBadge issue={row} />
+              </span>
+            ),
+          },
           { key: 'report_time', title: '上报时间', render: (row) => formatDateTime(row.report_time) },
         ]}
         rows={items || []}

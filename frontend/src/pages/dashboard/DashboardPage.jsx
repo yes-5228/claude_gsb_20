@@ -6,6 +6,7 @@ import PageHeader from '../../components/PageHeader.jsx';
 import StatCard from '../../components/StatCard.jsx';
 import TrendChart from '../../components/TrendChart.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
+import { useAutoRefresh } from '../../hooks/useAutoRefresh.js';
 import {
   CategoryPanel,
   DistrictPanel,
@@ -19,10 +20,11 @@ const RANGE_OPTIONS = [7, 14, 30];
 
 export default function DashboardPage() {
   const [trendDays, setTrendDays] = useState(14);
-  const { data, loading, error } = useAsync(
+  const { data, loading, error, reload } = useAsync(
     () => statsApi.dashboard(trendDays),
     [trendDays],
   );
+  useAutoRefresh(reload, 60_000);
 
   const overview = data?.overview;
 

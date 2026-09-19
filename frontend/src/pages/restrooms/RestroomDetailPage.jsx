@@ -8,7 +8,7 @@ import DataTable from '../../components/DataTable.jsx';
 import DetailList from '../../components/DetailList.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
 import Pagination from '../../components/Pagination.jsx';
-import { ScorePill, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { DeadlineBadge, ScorePill, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
 import { useListQuery } from '../../hooks/useListQuery.js';
 import { formatDateTime } from '../../utils/format.js';
@@ -181,7 +181,16 @@ export default function RestroomDetailPage() {
                     },
                     { key: 'category', title: '分类' },
                     { key: 'severity', title: '程度', render: (row) => <SeverityTag severity={row.severity} /> },
-                    { key: 'status', title: '状态', render: (row) => <StatusTag status={row.status} /> },
+                    {
+                      key: 'status',
+                      title: '状态 / 期限',
+                      render: (row) => (
+                        <span className="inline-col">
+                          <StatusTag status={row.status} />
+                          <DeadlineBadge issue={row} />
+                        </span>
+                      ),
+                    },
                     { key: 'report_time', title: '上报时间', render: (row) => formatDateTime(row.report_time) },
                   ]}
                 />

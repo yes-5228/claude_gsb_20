@@ -3,20 +3,24 @@ import { useState } from 'react';
 import { issueApi } from '../../api/issues.js';
 import Field from '../../components/Field.jsx';
 import Modal from '../../components/Modal.jsx';
+import { DeadlineBadge } from '../../components/Tags.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useDictionaries } from '../../hooks/useDictionaries.js';
-import { toDateTimeInput } from '../../utils/format.js';
+import { formatDateTime, toDateTimeInput } from '../../utils/format.js';
 
 export default function IssueEditModal({ issue, onClose, onSaved }) {
   const { dictionaries } = useDictionaries();
   const toast = useToast();
+  const originalDeadline = issue.deadline ? toDateTimeInput(issue.deadline) : '';
   const [form, setForm] = useState({
     title: issue.title,
     description: issue.description || '',
     category: issue.category,
     severity: issue.severity,
     assignee: issue.assignee || '',
-    deadline: issue.deadline ? toDateTimeInput(issue.deadline) : '',
+    deadline: originalDeadline,
+    operator: '',
+    deadline_adjust_reason: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -24,15 +28,31 @@ export default function IssueEditModal({ issue, onClose, onSaved }) {
   const setValue = (key) => (event) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
 
+  const deadlineChanged = form.deadline !== originalDeadline;
+  const calcLabel = issue.deadline_calc_type === 'workday' ? '工作日' : '自然日';
+
   const submit = async (event) => {
     event.preventDefault();
+    if (deadlineChanged && !form.deadline_adjust_reason.trim()) {
+      setError('整改期限发生变化，必须填写调整原因');
+      return;
+    }
     setSaving(true);
     setError(null);
+    const payload = {
+      title: form.title,
+      description: form.description,
+      category: form.category,
+      severity: form.severity,
+      assignee: form.assignee,
+    };
+    if (deadlineChanged) {
+      payload.deadline = form.deadline ? new Date(form.deadline).toISOString() : null;
+      payload.deadline_adjust_reason = form.deadline_adjust_reason.trim();
+      payload.operator = form.operator.trim() || form.assignee || '责任人';
+    }
     try {
-      await issueApi.update(issue.id, {
-        ...form,
-        deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
-      });
+      await issueApi.update(issue.id, payload);
       toast.success('问题信息已更新');
       onSaved();
       onClose();
@@ -80,8 +100,39 @@ export default function IssueEditModal({ issue, onClose, onSaved }) {
         <Field label="整改责任人">
           <input value={form.assignee} onChange={setValue('assignee')} />
         </Field>
-        <Field label="整改期限">
+        <Field
+          label="整改期限"
+          full
+          hint={
+            issue.deadline
+              ? `当前期限 ${formatDateTime(issue.deadline)}，${calcLabel}口径，${
+                  issue.deadline_source === 'manual'
+                    ? `来源：人工调整${issue.deadline_adjust_reason ? `（${issue.deadline_adjust_reason}）` : ''}`
+                    : '来源：系统自动推算'
+                }`
+              : '当前未设置期限'
+          }
+        >
+          <div className="inline">
+            <DeadlineBadge issue={issue} />
+          </div>
           <input type="datetime-local" value={form.deadline} onChange={setValue('deadline')} />
+          {deadlineChanged ? (
+            <div className="manual-deadline">
+              <input
+                value={form.operator}
+                onChange={setValue('operator')}
+                placeholder="操作人（默认整改责任人）"
+                maxLength={60}
+              />
+              <input
+                value={form.deadline_adjust_reason}
+                onChange={setValue('deadline_adjust_reason')}
+                placeholder="期限调整原因（必填，将写入整改轨迹）"
+                maxLength={500}
+              />
+            </div>
+          ) : null}
         </Field>
         <Field label="问题描述" full>
           <textarea rows="3" value={form.description} onChange={setValue('description')} />

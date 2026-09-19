@@ -832,6 +832,86 @@ table.data-table td.wrap {
   margin-bottom: 4px;
 }
 
+/* 期限相关 */
+.inline-col {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.overdue-count {
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.manual-deadline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rule-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-cell input[type='number'] {
+  width: 72px;
+}
+
+.rule-cell select {
+  flex: 1;
+  min-width: 84px;
+}
+
+.holiday-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.holiday-calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.holiday-card {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+}
+
+.holiday-card.is-holiday {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.holiday-card.is-workday {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.holiday-card input[type='date'],
+.holiday-card input[type='text'],
+.holiday-card select {
+  width: 100%;
+}
+
+.holiday-card .card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     flex-direction: column;

@@ -5,10 +5,17 @@ from pydantic import BaseModel, Field
 from app.schemas.inspection import InspectionOut
 from app.schemas.issue import IssueOut
 
-
 class NameValue(BaseModel):
     name: str
     value: float
+
+
+class StatusStat(BaseModel):
+    """看板上一个整改状态列的总量与其中的超期量。"""
+
+    name: str
+    value: int = 0
+    overdue: int = 0
 
 
 class OverviewStats(BaseModel):
@@ -61,7 +68,7 @@ class DashboardStats(BaseModel):
     """看板一次拉取所需的全部指标。"""
 
     overview: OverviewStats
-    issue_by_status: list[NameValue] = Field(default_factory=list)
+    issue_by_status: list[StatusStat] = Field(default_factory=list)
     issue_by_category: list[CategoryStat] = Field(default_factory=list)
     issue_by_severity: list[NameValue] = Field(default_factory=list)
     inspection_trend: list[TrendPoint] = Field(default_factory=list)

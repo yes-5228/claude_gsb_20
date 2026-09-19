@@ -7,9 +7,10 @@ import DataTable from '../../components/DataTable.jsx';
 import Field from '../../components/Field.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
 import Pagination from '../../components/Pagination.jsx';
-import { OverdueTag, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { DeadlineBadge, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
+import { useAutoRefresh } from '../../hooks/useAutoRefresh.js';
 import { useDictionaries } from '../../hooks/useDictionaries.js';
 import { useListQuery } from '../../hooks/useListQuery.js';
 import { formatDateTime } from '../../utils/format.js';
@@ -34,6 +35,7 @@ export default function IssueListPage() {
 
   const list = useListQuery((params) => issueApi.list(params), DEFAULT_FILTERS, 10);
   const { data: districts } = useAsync(() => restroomApi.districts(), []);
+  useAutoRefresh(list.reload, 30_000);
 
   // 支持从巡查记录跳转过来直接上报问题
   useEffect(() => {
@@ -187,12 +189,7 @@ export default function IssueListPage() {
               {
                 key: 'status',
                 title: '状态',
-                render: (row) => (
-                  <span className="inline">
-                    <StatusTag status={row.status} />
-                    <OverdueTag deadline={row.deadline} status={row.status} />
-                  </span>
-                ),
+                render: (row) => <StatusTag status={row.status} />,
               },
               { key: 'assignee', title: '责任人' },
               { key: 'reporter', title: '上报人' },
@@ -201,7 +198,19 @@ export default function IssueListPage() {
                 title: '上报时间',
                 render: (row) => formatDateTime(row.report_time),
               },
-              { key: 'deadline', title: '整改期限', render: (row) => formatDateTime(row.deadline) },
+              {
+                key: 'deadline',
+                title: '整改期限',
+                render: (row) =>
+                  row.deadline ? (
+                    <span className="inline-col">
+                      {formatDateTime(row.deadline)}
+                      <DeadlineBadge issue={row} />
+                    </span>
+                  ) : (
+                    '-'
+                  ),
+              },
               {
                 key: 'actions',
                 title: '操作',

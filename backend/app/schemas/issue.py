@@ -29,7 +29,14 @@ class IssueBase(BaseModel):
     severity: IssueSeverity = Field(default=IssueSeverity.NORMAL, description="严重程度")
     reporter: str = Field(default="", max_length=60, description="上报人")
     assignee: str = Field(default="", max_length=60, description="整改责任人")
-    deadline: datetime | None = Field(default=None, description="整改期限")
+    deadline: datetime | None = Field(
+        default=None, description="整改期限；上报时留空则按分类与程度自动推算"
+    )
+    deadline_adjust_reason: str | None = Field(
+        default=None,
+        max_length=500,
+        description="人工指定/调整期限的原因，deadline 非空且与规则建议不一致时必填",
+    )
     images: list[str] = Field(default_factory=list, description="现场图片链接")
 
 
@@ -47,6 +54,8 @@ class IssueUpdate(BaseModel):
     severity: IssueSeverity | None = None
     assignee: str | None = Field(default=None, max_length=60)
     deadline: datetime | None = None
+    deadline_adjust_reason: str | None = Field(default=None, max_length=500)
+    operator: str | None = Field(default=None, max_length=60, description="本次调整的操作人")
     images: list[str] | None = None
 
 
@@ -75,6 +84,14 @@ class IssueOut(BaseModel):
     assignee: str
     report_time: datetime
     deadline: datetime | None = None
+    deadline_calc_type: str | None = None
+    deadline_source: str = "auto"
+    deadline_adjust_reason: str | None = None
+    is_overdue: bool = False
+    due_today: bool = False
+    days_remaining: int | None = None
+    overdue_days: int = 0
+    overdue_frozen: bool = False
     images: list[str] = Field(default_factory=list)
     closed_at: datetime | None = None
     created_at: datetime

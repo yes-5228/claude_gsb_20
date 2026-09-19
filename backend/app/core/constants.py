@@ -49,6 +49,17 @@ class IssueStatus(StrEnum):
     CLOSED = "已关闭"
 
 
+class DeadlineCalcType(StrEnum):
+    """期限的天数口径。"""
+
+    CALENDAR = "natural"  # 自然日
+    WORKDAY = "workday"  # 工作日（跳过周末与法定节假日，调休补班计入）
+
+
+# 期限到期日当天的截止时间（当天 18:00）
+DEADLINE_CLOSE_HOUR = 18
+
+
 # 整改流转规则：当前状态 -> 允许流转到的状态
 ISSUE_TRANSITIONS: dict[str, list[str]] = {
     IssueStatus.PENDING: [IssueStatus.PROCESSING, IssueStatus.CLOSED],
@@ -97,3 +108,29 @@ OPEN_ISSUE_STATUSES: list[str] = [
 
 # 单检查项低于该分数视为不合格项
 INSPECTION_ITEM_PROBLEM_THRESHOLD = 6
+
+# ---------------------------------------------------------------------------
+# 整改期限默认规则：(问题分类, 严重程度) -> (允许天数, 天数口径)
+# 天数 0 表示上报当天到期；紧急问题一律当天到期。
+# 该矩阵仅用于首次写入期限规则表，之后以数据库配置为准，可在设置页维护。
+# ---------------------------------------------------------------------------
+DEFAULT_DEADLINE_MATRIX: dict[tuple[str, str], tuple[int, str]] = {
+    (IssueCategory.CLEANING, IssueSeverity.NORMAL): (3, DeadlineCalcType.CALENDAR),
+    (IssueCategory.CLEANING, IssueSeverity.SERIOUS): (2, DeadlineCalcType.CALENDAR),
+    (IssueCategory.CLEANING, IssueSeverity.URGENT): (0, DeadlineCalcType.CALENDAR),
+    (IssueCategory.FACILITY, IssueSeverity.NORMAL): (7, DeadlineCalcType.WORKDAY),
+    (IssueCategory.FACILITY, IssueSeverity.SERIOUS): (3, DeadlineCalcType.WORKDAY),
+    (IssueCategory.FACILITY, IssueSeverity.URGENT): (0, DeadlineCalcType.CALENDAR),
+    (IssueCategory.ODOR, IssueSeverity.NORMAL): (2, DeadlineCalcType.CALENDAR),
+    (IssueCategory.ODOR, IssueSeverity.SERIOUS): (1, DeadlineCalcType.CALENDAR),
+    (IssueCategory.ODOR, IssueSeverity.URGENT): (0, DeadlineCalcType.CALENDAR),
+    (IssueCategory.CONSUMABLE, IssueSeverity.NORMAL): (1, DeadlineCalcType.CALENDAR),
+    (IssueCategory.CONSUMABLE, IssueSeverity.SERIOUS): (1, DeadlineCalcType.CALENDAR),
+    (IssueCategory.CONSUMABLE, IssueSeverity.URGENT): (0, DeadlineCalcType.CALENDAR),
+    (IssueCategory.SAFETY, IssueSeverity.NORMAL): (2, DeadlineCalcType.WORKDAY),
+    (IssueCategory.SAFETY, IssueSeverity.SERIOUS): (1, DeadlineCalcType.WORKDAY),
+    (IssueCategory.SAFETY, IssueSeverity.URGENT): (0, DeadlineCalcType.CALENDAR),
+    (IssueCategory.OTHER, IssueSeverity.NORMAL): (5, DeadlineCalcType.CALENDAR),
+    (IssueCategory.OTHER, IssueSeverity.SERIOUS): (3, DeadlineCalcType.CALENDAR),
+    (IssueCategory.OTHER, IssueSeverity.URGENT): (0, DeadlineCalcType.CALENDAR),
+}

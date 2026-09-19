@@ -10,6 +10,7 @@ from app.core.constants import (
     INSPECTION_CHECK_ITEMS,
     INSPECTION_ITEM_MAX_SCORE,
     ISSUE_TRANSITIONS,
+    DeadlineCalcType,
     IssueCategory,
     IssueSeverity,
     IssueStatus,
@@ -40,6 +41,7 @@ class Dictionaries(BaseModel):
     inspection_check_items: list[str]
     inspection_item_max_score: int
     issue_transitions: dict[str, list[str]]
+    deadline_calc_types: list[dict[str, str]]
 
 
 @router.get("/dictionaries", response_model=Dictionaries, summary="枚举字典")
@@ -54,6 +56,10 @@ def get_dictionaries() -> Dictionaries:
         inspection_check_items=list(INSPECTION_CHECK_ITEMS),
         inspection_item_max_score=INSPECTION_ITEM_MAX_SCORE,
         issue_transitions={key: list(value) for key, value in ISSUE_TRANSITIONS.items()},
+        deadline_calc_types=[
+            {"value": DeadlineCalcType.CALENDAR.value, "label": "自然日"},
+            {"value": DeadlineCalcType.WORKDAY.value, "label": "工作日"},
+        ],
     )
 
 

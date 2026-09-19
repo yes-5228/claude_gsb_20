@@ -14,7 +14,10 @@ from app.core.constants import (
 from app.core.exceptions import DomainError, NotFoundError
 from app.models import Inspection, Issue, RectificationRecord, Restroom
 from app.schemas.issue import IssueCreate, IssueOut, IssueStatusUpdate, IssueUpdate
-from app.services import restroom_service
+from app.services import deadline_service, restroom_service
+
+# 认为前端回传的期限与规则建议一致的最大误差（秒），避免毫秒级差异被当成人工调整
+_DEADLINE_MATCH_TOLERANCE = 60
 
 SORTABLE_FIELDS = {
     "report_time": Issue.report_time,
@@ -53,15 +56,21 @@ def get_issue(db: Session, issue_id: int) -> Issue:
 
 
 def to_out(issue: Issue) -> IssueOut:
-    return IssueOut.model_validate(issue)
+    """统一出口：超期/剩余天数在这里计算，列表、详情、看板共用一份结论。"""
+    view = deadline_service.evaluate(issue)
+    return IssueOut.model_validate(issue).model_copy(
+        update={
+            "is_overdue": view["is_overdue"],
+            "due_today": view["due_today"],
+            "days_remaining": view["days_remaining"],
+            "overdue_days": view["overdue_days"],
+            "overdue_frozen": view["frozen"],
+        }
+    )
 
 
 def is_overdue(issue: Issue) -> bool:
-    return (
-        issue.deadline is not None
-        and issue.status in OPEN_ISSUE_STATUSES
-        and issue.deadline < datetime.now()
-    )
+    return deadline_service.evaluate(issue)["is_overdue"]
 
 
 def list_issues(
@@ -134,6 +143,35 @@ def list_issues(
     return rows, total
 
 
+def _reshape_deadline(
+    db: Session,
+    *,
+    category: str,
+    severity: str,
+    report_time: datetime,
+    deadline: datetime | None,
+    reason: str | None,
+) -> tuple[datetime, str, str, str | None]:
+    """返回 (期限, 口径, 来源 auto/manual, 调整原因)。
+
+    留空按规则自动推算；回传值与建议一致视为接受建议；不一致即人工调整，必须给原因。
+    """
+    suggestion = deadline_service.suggest_deadline(db, category, severity, report_time)
+    suggested = suggestion["deadline"]
+    calc_type = suggestion["calc_type"]
+    if deadline is None:
+        return suggested, calc_type, "auto", None
+    if abs((deadline - suggested).total_seconds()) <= _DEADLINE_MATCH_TOLERANCE:
+        return suggested, calc_type, "auto", None
+    if not reason or not reason.strip():
+        raise DomainError("整改期限与系统按分类、严重程度推算的建议不一致，人工调整必须填写原因")
+    return deadline, calc_type, "manual", reason.strip()
+
+
+def _format_dt(value: datetime | None) -> str:
+    return value.strftime("%Y-%m-%d %H:%M") if value else "空"
+
+
 def create_issue(db: Session, payload: IssueCreate) -> Issue:
     restroom_service.get_restroom(db, payload.restroom_id)
     if payload.inspection_id is not None:
@@ -143,12 +181,35 @@ def create_issue(db: Session, payload: IssueCreate) -> Issue:
         if inspection.restroom_id != payload.restroom_id:
             raise DomainError("关联的巡查记录与所选公厕不一致")
 
-    data = _values(payload.model_dump(exclude={"inspection_id", "report_time", "initial_remark"}))
+    report_time = deadline_service.as_naive(payload.report_time) or datetime.now()
+    deadline, calc_type, source, reason = _reshape_deadline(
+        db,
+        category=payload.category.value,
+        severity=payload.severity.value,
+        report_time=report_time,
+        deadline=deadline_service.as_naive(payload.deadline),
+        reason=payload.deadline_adjust_reason,
+    )
+    data = _values(
+        payload.model_dump(
+            exclude={
+                "inspection_id",
+                "report_time",
+                "initial_remark",
+                "deadline",
+                "deadline_adjust_reason",
+            }
+        )
+    )
     issue = Issue(
         code=_next_code(db),
         inspection_id=payload.inspection_id,
-        report_time=payload.report_time or datetime.now(),
+        report_time=report_time,
         status=IssueStatus.PENDING.value,
+        deadline=deadline,
+        deadline_calc_type=calc_type,
+        deadline_source=source,
+        deadline_adjust_reason=reason,
         **data,
     )
     issue.records.append(
@@ -160,6 +221,22 @@ def create_issue(db: Session, payload: IssueCreate) -> Issue:
             remark=payload.initial_remark or "巡查发现，等待派单整改",
         )
     )
+    if source == "manual":
+        suggestion = deadline_service.suggest_deadline(
+            db, payload.category.value, payload.severity.value, report_time
+        )
+        issue.records.append(
+            RectificationRecord(
+                action="调整期限",
+                from_status="",
+                to_status=IssueStatus.PENDING.value,
+                operator=payload.reporter or "巡查员",
+                remark=(
+                    f"人工设定整改期限为 {_format_dt(deadline)}"
+                    f"（系统建议 {_format_dt(suggestion['deadline'])}），原因：{reason}"
+                ),
+            )
+        )
     db.add(issue)
     db.commit()
     db.refresh(issue)
@@ -172,6 +249,57 @@ def update_issue(db: Session, issue_id: int, payload: IssueUpdate) -> Issue:
     issue_data = payload.model_dump(exclude_unset=True)
     if "images" in issue_data and payload.images is not None:
         issue_data["images"] = list(payload.images)
+
+    deadline_present = "deadline" in issue_data
+    new_deadline = deadline_service.as_naive(issue_data.pop("deadline", None))
+    reason = (issue_data.pop("deadline_adjust_reason", None) or "").strip()
+    operator = (issue_data.pop("operator", None) or issue.assignee or "责任人").strip() or "责任人"
+
+    if deadline_present:
+        old_deadline = issue.deadline
+        unchanged = (
+            new_deadline is not None
+            and old_deadline is not None
+            and abs((new_deadline - old_deadline).total_seconds()) <= _DEADLINE_MATCH_TOLERANCE
+        )
+        if unchanged:
+            # 期限没有实际变化，不视为人工调整，也不写调整流水
+            pass
+        elif new_deadline is None:
+            if not reason:
+                raise DomainError("清空整改期限属于人工调整，必须填写调整原因")
+            issue.deadline = None
+            remark = f"清空原整改期限（原期限 {_format_dt(old_deadline)}），原因：{reason}"
+            issue.deadline_source = "manual"
+            issue.deadline_adjust_reason = reason
+            issue.records.append(
+                RectificationRecord(
+                    action="调整期限",
+                    from_status=issue.status,
+                    to_status=issue.status,
+                    operator=operator,
+                    remark=remark,
+                )
+            )
+        else:
+            if not reason:
+                raise DomainError("人工调整整改期限必须填写调整原因")
+            issue.deadline = new_deadline
+            issue.deadline_source = "manual"
+            issue.deadline_adjust_reason = reason
+            issue.records.append(
+                RectificationRecord(
+                    action="调整期限",
+                    from_status=issue.status,
+                    to_status=issue.status,
+                    operator=operator,
+                    remark=(
+                        f"整改期限由 {_format_dt(old_deadline)} 调整为 {_format_dt(new_deadline)}，"
+                        f"原因：{reason}"
+                    ),
+                )
+            )
+
     for key, value in _values(issue_data).items():
         setattr(issue, key, value)
     db.commit()
@@ -200,7 +328,12 @@ def change_status(db: Session, issue_id: int, payload: IssueStatusUpdate) -> Iss
 
     from_status = issue.status
     issue.status = target
-    issue.closed_at = datetime.now() if target == IssueStatus.CLOSED.value else None
+    closed_statuses = (IssueStatus.DONE.value, IssueStatus.CLOSED.value)
+    if target == IssueStatus.CLOSED.value:
+        issue.closed_at = datetime.now()
+    # 从未闭环状态进入闭环状态时，定格「闭环前是否超期」；此后不再改写
+    if from_status in OPEN_ISSUE_STATUSES and target in closed_statuses and issue.overdue_snapshot is None:
+        deadline_service.freeze_snapshot(issue)
     if payload.to_status == IssueStatus.PROCESSING and payload.operator:
         issue.assignee = payload.operator if not issue.assignee else issue.assignee
     issue.records.append(

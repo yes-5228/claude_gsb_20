@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import holidays_data
 from app.core.constants import (
     INSPECTION_CHECK_ITEMS,
     IssueCategory,
@@ -15,11 +16,11 @@ from app.core.constants import (
     RestroomStatus,
     Shift,
 )
-from app.models import Restroom
+from app.models import Holiday, Restroom
 from app.schemas.inspection import InspectionCreate, InspectionItem
-from app.schemas.issue import IssueCreate, IssueStatusUpdate
+from app.schemas.issue import IssueCreate, IssueStatusUpdate, IssueUpdate
 from app.schemas.restroom import RestroomCreate
-from app.services import inspection_service, issue_service, restroom_service
+from app.services import deadline_service, inspection_service, issue_service, restroom_service
 
 RANDOM_SEED = 20240913
 
@@ -97,6 +98,17 @@ def _pick_problem(items: list[InspectionItem]) -> str | None:
     return min(pool, key=lambda item: item.score).name
 
 
+def _seed_holidays(db: Session) -> None:
+    """写入预置年份的节假日；已存在记录的年份整体跳过，避免覆盖用户维护结果。"""
+    for year in holidays_data.seeded_years():
+        exists = db.scalar(select(func.count()).select_from(Holiday).where(Holiday.year == year))
+        if exists:
+            continue
+        for day, name, day_type in holidays_data.holiday_items(year):
+            db.add(Holiday(day=day, year=year, name=name, day_type=day_type))
+    db.commit()
+
+
 def seed_database(db: Session, *, reset: bool = False) -> int:
     """写入演示数据，返回新增的问题条数；已有数据时默认跳过。"""
     existing = db.scalar(select(func.count()).select_from(Restroom)) or 0
@@ -105,6 +117,10 @@ def seed_database(db: Session, *, reset: bool = False) -> int:
 
     rng = random.Random(RANDOM_SEED)
     now = datetime.now()
+
+    # 规则与日历属于基础配置，任何演示数据写入前先就绪
+    deadline_service.ensure_default_rules(db)
+    _seed_holidays(db)
 
     restrooms = [
         restroom_service.create_restroom(
@@ -169,9 +185,7 @@ def seed_database(db: Session, *, reset: bool = False) -> int:
             else rng.choice([IssueSeverity.NORMAL, IssueSeverity.SERIOUS])
         )
         age_days = (now - summary.inspect_time).days
-        deadline = summary.inspect_time + timedelta(
-            days=1 if severity == IssueSeverity.URGENT else 3
-        )
+        # 期限不再手填：由服务端按分类与严重程度（自然日/工作日）自动推算
         issue = issue_service.create_issue(
             db,
             IssueCreate(
@@ -183,14 +197,99 @@ def seed_database(db: Session, *, reset: bool = False) -> int:
                 severity=severity,
                 reporter=summary.inspector,
                 assignee=rng.choice(MANAGERS),
-                deadline=deadline,
                 initial_remark="由保洁巡查自动生成的问题工单",
             ),
         )
         created += 1
         _advance_issue(db, issue.id, age_days, rng)
 
+    _seed_manual_deadline_example(db, restrooms[0].id)
+    _seed_open_overdue_examples(db, restrooms, now)
     return created
+
+
+def _advance(db: Session, issue_id: int, targets: list[IssueStatus], operator: str = "保洁班组") -> None:
+    for target in targets:
+        try:
+            issue_service.change_status(
+                db,
+                issue_id,
+                IssueStatusUpdate(to_status=target, operator=operator, remark="演示数据流转"),
+            )
+        except Exception:  # noqa: BLE001  演示数据允许跳过不合法的流转
+            return
+
+
+def _seed_open_overdue_examples(db: Session, restrooms, now: datetime) -> None:
+    """造几条仍处于未闭环、但期限已过或当天到期的问题，让看板超期列有数据。"""
+    specs = [
+        # (公厕下标, 标题, 分类, 程度, 上报距今天数, 需要推进到的状态)
+        (1, "地面湿滑未设置警示牌（超期未整改）", IssueCategory.SAFETY, IssueSeverity.URGENT, 3, []),
+        (2, "感应冲水器失灵待维修（超期整改中）", IssueCategory.FACILITY, IssueSeverity.NORMAL, 11,
+         [IssueStatus.PROCESSING]),
+        (3, "夜间照明灯损坏（超期待验收）", IssueCategory.SAFETY, IssueSeverity.SERIOUS, 5,
+         [IssueStatus.PROCESSING, IssueStatus.REVIEWING]),
+        (4, "垃圾清运不及时（超期未派单）", IssueCategory.CLEANING, IssueSeverity.NORMAL, 4, []),
+    ]
+    for idx, title, category, severity, age, targets in specs:
+        room = restrooms[idx % len(restrooms)]
+        issue = issue_service.create_issue(
+            db,
+            IssueCreate(
+                restroom_id=room.id,
+                title=title,
+                description="演示数据：用于展示按分类与严重程度自动推算的期限及超期预警。",
+                category=category,
+                severity=severity,
+                reporter="马晓峰",
+                assignee=room.manager,
+                report_time=now - timedelta(days=age, hours=2),
+                initial_remark="由保洁巡查自动生成的问题工单",
+            ),
+        )
+        _advance(db, issue.id, targets)
+
+    # 一条今天到期的紧急问题（当天到期、尚未超期）
+    room = restrooms[5 % len(restrooms)]
+    issue_service.create_issue(
+        db,
+        IssueCreate(
+            restroom_id=room.id,
+            title="排风扇异响需当天处理（今日到期）",
+            description="演示数据：紧急问题当天到期。",
+            category=IssueCategory.ODOR,
+            severity=IssueSeverity.URGENT,
+            reporter="胡明月",
+            assignee=room.manager,
+            initial_remark="紧急问题，要求当天整改",
+        )
+    )
+
+
+def _seed_manual_deadline_example(db: Session, restroom_id: int) -> None:
+    """造一条人工调整过期限的问题，展示调整原因与整改轨迹记录。"""
+    issue = issue_service.create_issue(
+        db,
+        IssueCreate(
+            restroom_id=restroom_id,
+            title="洗手台镜面碎裂待更换（人工展期样例）",
+            description="镜面破损需定制配件，责任人申请延长整改期限。",
+            category=IssueCategory.FACILITY,
+            severity=IssueSeverity.NORMAL,
+            reporter="邓晨曦",
+            assignee="刘桂芳",
+        ),
+    )
+    extended = datetime.now() + timedelta(days=5)
+    issue_service.update_issue(
+        db,
+        issue.id,
+        IssueUpdate(
+            deadline=extended,
+            deadline_adjust_reason="替换镜面需厂家定制，配件到货约需 5 个工作日，经值班长同意展期",
+            operator="值班长",
+        ),
+    )
 
 
 def _advance_issue(db: Session, issue_id: int, age_days: int, rng: random.Random) -> None:

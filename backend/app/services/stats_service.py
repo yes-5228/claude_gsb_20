@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
@@ -20,6 +20,7 @@ from app.schemas.stats import (
     NameValue,
     OverviewStats,
     RestroomRankItem,
+    StatusStat,
     TrendPoint,
 )
 from app.services import inspection_service, issue_service
@@ -77,12 +78,27 @@ def overview(db: Session) -> OverviewStats:
     )
 
 
-def issue_by_status(db: Session) -> list[NameValue]:
-    rows = dict(
-        db.execute(select(Issue.status, func.count()).group_by(Issue.status)).all()  # type: ignore[arg-type]
-    )
-    ordered = list(IssueStatus)
-    return [NameValue(name=status.value, value=float(rows.get(status.value, 0))) for status in ordered]
+def issue_by_status(db: Session) -> list[StatusStat]:
+    now = datetime.now()
+    overdue_case = case((Issue.deadline < now, 1), else_=0)
+    rows = db.execute(
+        select(Issue.status, func.count(), func.coalesce(func.sum(overdue_case), 0)).group_by(
+            Issue.status
+        )
+    ).all()
+    counts = {status: (int(total), int(overdue)) for status, total, overdue in rows}
+    result: list[StatusStat] = []
+    for status in IssueStatus:
+        total, overdue = counts.get(status.value, (0, 0))
+        # 超期只对未闭环状态成立；已完成/已关闭即使期限在过去也不计超期
+        result.append(
+            StatusStat(
+                name=status.value,
+                value=total,
+                overdue=overdue if status.value in OPEN_ISSUE_STATUSES else 0,
+            )
+        )
+    return result
 
 
 def issue_by_severity(db: Session) -> list[NameValue]:

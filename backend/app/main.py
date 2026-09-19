@@ -12,13 +12,16 @@ from app.api.v1 import api_router
 from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.exceptions import DomainError
+from app.services import deadline_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    if settings.seed_on_startup:
-        with SessionLocal() as db:
+    with SessionLocal() as db:
+        # 期限规则属于基础配置，即使关闭演示数据也要可用
+        deadline_service.ensure_default_rules(db)
+        if settings.seed_on_startup:
             seed.seed_database(db)
     yield
 

@@ -5,7 +5,7 @@ import { issueApi } from '../../api/issues.js';
 import DetailList from '../../components/DetailList.jsx';
 import Field from '../../components/Field.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
-import { OverdueTag, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { DeadlineBadge, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import Timeline from '../../components/Timeline.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
@@ -110,7 +110,7 @@ export default function IssueDetailPage() {
                   <h3>{issue.title}</h3>
                   <StatusTag status={issue.status} />
                   <SeverityTag severity={issue.severity} />
-                  <OverdueTag deadline={issue.deadline} status={issue.status} />
+                  <DeadlineBadge issue={issue} />
                 </div>
                 <span className="hint">最后更新：{formatDateTime(issue.updated_at)}</span>
               </div>
@@ -132,7 +132,27 @@ export default function IssueDetailPage() {
                     value: `${issue.reporter || '-'} · ${formatDateTime(issue.report_time)}`,
                   },
                   { label: '整改责任人', value: issue.assignee || '未指派' },
-                  { label: '整改期限', value: formatDateTime(issue.deadline) },
+                  {
+                    label: '整改期限',
+                    value: issue.deadline ? (
+                      <span className="inline-col">
+                        <span className="inline">
+                          {formatDateTime(issue.deadline)}
+                          <DeadlineBadge issue={issue} />
+                        </span>
+                        <span className="hint">
+                          {issue.deadline_calc_type === 'workday' ? '工作日' : '自然日'}口径 ·{' '}
+                          {issue.deadline_source === 'manual' ? '人工调整' : '系统按分类与程度自动推算'}
+                        </span>
+                      </span>
+                    ) : (
+                      '-'
+                    ),
+                  },
+                  {
+                    label: '期限调整原因',
+                    value: issue.deadline_source === 'manual' ? issue.deadline_adjust_reason || '未填写' : '按规则推算，无人工调整',
+                  },
                   {
                     label: '关联巡查记录',
                     value: issue.inspection_id ? `#${issue.inspection_id}` : '无',

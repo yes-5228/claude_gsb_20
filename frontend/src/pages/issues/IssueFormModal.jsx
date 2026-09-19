@@ -7,7 +7,8 @@ import Field from '../../components/Field.jsx';
 import Modal from '../../components/Modal.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useDictionaries } from '../../hooks/useDictionaries.js';
-import { toDateTimeInput } from '../../utils/format.js';
+import { useDeadlineSuggestion } from '../../hooks/useDeadlineSuggestion.js';
+import { formatDateTime, toDateTimeInput } from '../../utils/format.js';
 
 export default function IssueFormModal({
   defaultRestroomId,
@@ -30,9 +31,13 @@ export default function IssueFormModal({
     severity: '一般',
     reporter: '',
     assignee: '',
-    deadline: toDateTimeInput(new Date(Date.now() + 3 * 24 * 3600 * 1000)),
+    deadlineMode: 'auto',
+    deadline: '',
+    deadline_adjust_reason: '',
     initial_remark: '',
   });
+
+  const { suggestion } = useDeadlineSuggestion(form.category, form.severity);
 
   useEffect(() => {
     metaApi
@@ -83,16 +88,34 @@ export default function IssueFormModal({
       setError('请填写问题标题');
       return;
     }
+    if (form.deadlineMode === 'manual') {
+      if (!form.deadline) {
+        setError('人工指定期限时请选择日期时间');
+        return;
+      }
+      if (!form.deadline_adjust_reason.trim()) {
+        setError('人工调整整改期限必须填写调整原因');
+        return;
+      }
+    }
     setSaving(true);
     setError(null);
+    const payload = {
+      ...form,
+      restroom_id: Number(form.restroom_id),
+      inspection_id: form.inspection_id ? Number(form.inspection_id) : null,
+    };
+    if (form.deadlineMode === 'auto') {
+      // 自动推算：期限交给后端，不回传任何手填值
+      delete payload.deadline;
+      delete payload.deadline_adjust_reason;
+    } else {
+      payload.deadline = form.deadline ? new Date(form.deadline).toISOString() : null;
+    }
+    delete payload.deadlineMode;
     try {
-      await issueApi.create({
-        ...form,
-        restroom_id: Number(form.restroom_id),
-        inspection_id: form.inspection_id ? Number(form.inspection_id) : null,
-        deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
-      });
-      toast.success('问题已上报，进入待整改状态');
+      await issueApi.create(payload);
+      toast.success('问题已上报，整改期限已按规则自动推算');
       onSaved();
       onClose();
     } catch (err) {
@@ -101,6 +124,9 @@ export default function IssueFormModal({
       setSaving(false);
     }
   };
+
+  const calcTypeLabel =
+    suggestion?.calc_type === 'workday' ? '工作日' : '自然日';
 
   return (
     <Modal
@@ -163,9 +189,61 @@ export default function IssueFormModal({
         <Field label="整改责任人">
           <input value={form.assignee} onChange={setValue('assignee')} placeholder="保洁班组 / 责任人" />
         </Field>
-        <Field label="整改期限">
-          <input type="datetime-local" value={form.deadline} onChange={setValue('deadline')} />
+
+        <Field
+          label="整改期限"
+          full
+          hint={
+            suggestion
+              ? `系统建议：${suggestion.allowed_days === 0
+                  ? '紧急问题当天到期'
+                  : `${suggestion.allowed_days} 个${calcTypeLabel}（${calcTypeLabel === '工作日' ? '跳过周末与节假日' : '含周末与节假日'}）`}，到期时间 ${formatDateTime(suggestion.deadline)}`
+              : '按分类与严重程度自动推算，可在系统设置中调整规则'
+          }
+        >
+          <div className="inline">
+            <label className="inline" style={{ gap: 4 }}>
+              <input
+                type="radio"
+                checked={form.deadlineMode === 'auto'}
+                onChange={() =>
+                  setForm((prev) => ({ ...prev, deadlineMode: 'auto', deadline_adjust_reason: '' }))
+                }
+              />
+              按规则自动推算
+            </label>
+            <label className="inline" style={{ gap: 4 }}>
+              <input
+                type="radio"
+                checked={form.deadlineMode === 'manual'}
+                onChange={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    deadlineMode: 'manual',
+                    deadline: suggestion ? toDateTimeInput(suggestion.deadline) : prev.deadline,
+                  }))
+                }
+              />
+              人工指定
+            </label>
+          </div>
+          {form.deadlineMode === 'manual' ? (
+            <div className="manual-deadline">
+              <input
+                type="datetime-local"
+                value={form.deadline}
+                onChange={setValue('deadline')}
+              />
+              <input
+                value={form.deadline_adjust_reason}
+                onChange={setValue('deadline_adjust_reason')}
+                placeholder="人工调整原因（必填，将写入整改轨迹）"
+                maxLength={500}
+              />
+            </div>
+          ) : null}
         </Field>
+
         <Field label="问题描述" full>
           <textarea rows="3" value={form.description} onChange={setValue('description')} />
         </Field>

@@ -1,6 +1,6 @@
 """接口级测试：覆盖台账、巡查、问题整改与统计看板。"""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from tests.conftest import full_items
 
@@ -125,10 +125,11 @@ def test_issue_lifecycle(client, restroom):
             "severity": "严重",
             "reporter": "王巡查",
             "assignee": "保洁班组",
-            "deadline": (datetime.now() - timedelta(days=1)).isoformat(),
         },
     ).json()
     assert issue["status"] == "待整改"
+    assert issue["deadline_source"] == "auto"
+    assert issue["deadline"] is not None
     assert len(issue["records"]) == 1
     assert issue["records"][0]["action"] == "上报问题"
 
@@ -172,7 +173,6 @@ def test_issue_lifecycle(client, restroom):
     assert final["status"] == "已关闭"
     assert final["closed_at"] is not None
     assert [record["to_status"] for record in final["records"]][-1] == "已关闭"
-
     closed_record = client.post(
         f"/api/v1/issues/{issue['id']}/records",
         json={"action": "整改进度", "operator": "值班长", "remark": "补充说明"},
