@@ -1,7 +1,7 @@
 """演示数据生成：首次启动时写入，便于快速体验各模块。"""
 
 import random
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,13 +15,61 @@ from app.core.constants import (
     RestroomStatus,
     Shift,
 )
-from app.models import Restroom
+from app.models import Holiday, Restroom
 from app.schemas.inspection import InspectionCreate, InspectionItem
 from app.schemas.issue import IssueCreate, IssueStatusUpdate
 from app.schemas.restroom import RestroomCreate
 from app.services import inspection_service, issue_service, restroom_service
 
 RANDOM_SEED = 20240913
+
+# 法定节假日演示数据（可按需在「节假日日历」页面按年调整）：年份 -> (起, 止, 名称)
+HOLIDAY_SPECS: dict[int, list[tuple[date, date, str]]] = {
+    2026: [
+        (date(2026, 1, 1), date(2026, 1, 1), "元旦"),
+        (date(2026, 2, 16), date(2026, 2, 22), "春节"),
+        (date(2026, 4, 4), date(2026, 4, 6), "清明节"),
+        (date(2026, 5, 1), date(2026, 5, 5), "劳动节"),
+        (date(2026, 6, 19), date(2026, 6, 19), "端午节"),
+        (date(2026, 9, 25), date(2026, 9, 25), "中秋节"),
+        (date(2026, 10, 1), date(2026, 10, 7), "国庆节"),
+    ],
+    2027: [
+        (date(2027, 1, 1), date(2027, 1, 1), "元旦"),
+        (date(2027, 2, 5), date(2027, 2, 11), "春节"),
+        (date(2027, 4, 3), date(2027, 4, 5), "清明节"),
+        (date(2027, 5, 1), date(2027, 5, 5), "劳动节"),
+        (date(2027, 6, 9), date(2027, 6, 9), "端午节"),
+        (date(2027, 9, 15), date(2027, 9, 15), "中秋节"),
+        (date(2027, 10, 1), date(2027, 10, 7), "国庆节"),
+    ],
+}
+
+
+def seed_holidays(db: Session) -> int:
+    """写入当年与次年的节假日日历；已有数据时跳过。"""
+    existing = db.scalar(select(func.count()).select_from(Holiday)) or 0
+    if existing:
+        return 0
+    current_year = date.today().year
+    created = 0
+    for year in (current_year, current_year + 1):
+        specs = HOLIDAY_SPECS.get(year)
+        if not specs:
+            # 未预置的年份至少写入固定日期的节假日，后续可在页面上按年维护
+            specs = [
+                (date(year, 1, 1), date(year, 1, 1), "元旦"),
+                (date(year, 5, 1), date(year, 5, 1), "劳动节"),
+                (date(year, 10, 1), date(year, 10, 3), "国庆节"),
+            ]
+        for start, end, name in specs:
+            day = start
+            while day <= end:
+                db.add(Holiday(year=year, date=day, name=name))
+                created += 1
+                day += timedelta(days=1)
+    db.commit()
+    return created
 
 RESTROOM_SPECS = [
     ("人民广场公共厕所", "城东区", "人民广场东侧 50 米", RestroomGrade.FIRST, RestroomStatus.NORMAL, "王秀兰", 12, 6, True),
@@ -99,6 +147,7 @@ def _pick_problem(items: list[InspectionItem]) -> str | None:
 
 def seed_database(db: Session, *, reset: bool = False) -> int:
     """写入演示数据，返回新增的问题条数；已有数据时默认跳过。"""
+    seed_holidays(db)
     existing = db.scalar(select(func.count()).select_from(Restroom)) or 0
     if existing and not reset:
         return 0
@@ -169,9 +218,6 @@ def seed_database(db: Session, *, reset: bool = False) -> int:
             else rng.choice([IssueSeverity.NORMAL, IssueSeverity.SERIOUS])
         )
         age_days = (now - summary.inspect_time).days
-        deadline = summary.inspect_time + timedelta(
-            days=1 if severity == IssueSeverity.URGENT else 3
-        )
         issue = issue_service.create_issue(
             db,
             IssueCreate(
@@ -183,7 +229,7 @@ def seed_database(db: Session, *, reset: bool = False) -> int:
                 severity=severity,
                 reporter=summary.inspector,
                 assignee=rng.choice(MANAGERS),
-                deadline=deadline,
+                report_time=summary.inspect_time,
                 initial_remark="由保洁巡查自动生成的问题工单",
             ),
         )

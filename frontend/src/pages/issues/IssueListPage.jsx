@@ -7,7 +7,7 @@ import DataTable from '../../components/DataTable.jsx';
 import Field from '../../components/Field.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
 import Pagination from '../../components/Pagination.jsx';
-import { OverdueTag, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { OverdueTag, RemainingTag, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
 import { useDictionaries } from '../../hooks/useDictionaries.js';
@@ -62,7 +62,7 @@ export default function IssueListPage() {
     <>
       <PageHeader
         title="问题上报与整改跟踪"
-        description="问题从上报到验收关闭的全流程跟踪，支持超期预警"
+        description="期限按分类与严重程度自动推算，支持人工调整留痕与超期预警"
         actions={
           <button
             type="button"
@@ -190,7 +190,7 @@ export default function IssueListPage() {
                 render: (row) => (
                   <span className="inline">
                     <StatusTag status={row.status} />
-                    <OverdueTag deadline={row.deadline} status={row.status} />
+                    <OverdueTag overdue={row.is_overdue} />
                   </span>
                 ),
               },
@@ -202,6 +202,11 @@ export default function IssueListPage() {
                 render: (row) => formatDateTime(row.report_time),
               },
               { key: 'deadline', title: '整改期限', render: (row) => formatDateTime(row.deadline) },
+              {
+                key: 'remaining_days',
+                title: '剩余期限',
+                render: (row) => <RemainingTag days={row.remaining_days} />,
+              },
               {
                 key: 'actions',
                 title: '操作',

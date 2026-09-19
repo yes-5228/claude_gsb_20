@@ -11,4 +11,5 @@ export const issueApi = {
   transitions: (id) => http.get(`${RESOURCE}/${id}/transitions`),
   changeStatus: (id, payload) => http.post(`${RESOURCE}/${id}/transitions`, payload),
   addRecord: (id, payload) => http.post(`${RESOURCE}/${id}/records`, payload),
+  deadlinePreview: (params) => http.get(`${RESOURCE}/deadline-preview`, params),
 };

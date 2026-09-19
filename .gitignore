@@ -42,3 +42,6 @@ traces/
 db.sqlite3
 *.sqlite3
 .venv
+
+# 运行期生成的 SQLite 数据
+backend/data/

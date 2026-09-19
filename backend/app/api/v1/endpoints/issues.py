@@ -1,6 +1,6 @@
 """问题上报与整改跟踪接口。"""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -8,11 +8,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import PaginationDep, build_meta
-from app.core.constants import OPEN_ISSUE_STATUSES
+from app.core.constants import OPEN_ISSUE_STATUSES, IssueCategory, IssueSeverity
 from app.core.database import get_db
 from app.schemas.common import MessageOut, Page
-from app.schemas.issue import IssueCreate, IssueOut, IssueStatusUpdate, IssueUpdate
-from app.services import issue_service
+from app.schemas.issue import (
+    DeadlinePreviewOut,
+    IssueCreate,
+    IssueOut,
+    IssueStatusUpdate,
+    IssueUpdate,
+)
+from app.services import deadline_service, issue_service
 
 router = APIRouter(prefix="/issues", tags=["问题上报"])
 
@@ -74,6 +80,23 @@ def list_issues(
 @router.post("", response_model=IssueOut, status_code=201, summary="上报问题")
 def create_issue(payload: IssueCreate, db: Annotated[Session, Depends(get_db)]) -> IssueOut:
     return issue_service.to_out(issue_service.create_issue(db, payload))
+
+
+# 注意：需注册在 /{issue_id} 之前，否则会被详情路由截获
+@router.get("/deadline-preview", response_model=DeadlinePreviewOut, summary="按规则预览整改期限")
+def deadline_preview(
+    db: Annotated[Session, Depends(get_db)],
+    category: Annotated[IssueCategory, Query(description="问题分类")],
+    severity: Annotated[IssueSeverity, Query(description="严重程度")],
+    report_time: Annotated[datetime | None, Query(description="上报时间，留空取当前时间")] = None,
+) -> DeadlinePreviewOut:
+    base_time = report_time or datetime.now()
+    deadline = deadline_service.compute_deadline(db, category.value, severity.value, base_time)
+    days, day_type = deadline_service.rule_for(category.value, severity.value)
+    description = "紧急问题当天到期" if days == 0 else f"{days} 个{day_type.value}内整改"
+    return DeadlinePreviewOut(
+        deadline=deadline, days=days, day_type=day_type.value, description=description
+    )
 
 
 @router.get("/{issue_id}", response_model=IssueOut, summary="问题详情与整改轨迹")

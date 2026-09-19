@@ -5,7 +5,7 @@ import { issueApi } from '../../api/issues.js';
 import DetailList from '../../components/DetailList.jsx';
 import Field from '../../components/Field.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
-import { OverdueTag, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { OverdueTag, RemainingTag, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import Timeline from '../../components/Timeline.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
@@ -110,7 +110,7 @@ export default function IssueDetailPage() {
                   <h3>{issue.title}</h3>
                   <StatusTag status={issue.status} />
                   <SeverityTag severity={issue.severity} />
-                  <OverdueTag deadline={issue.deadline} status={issue.status} />
+                  <OverdueTag overdue={issue.is_overdue} />
                 </div>
                 <span className="hint">最后更新：{formatDateTime(issue.updated_at)}</span>
               </div>
@@ -133,6 +133,8 @@ export default function IssueDetailPage() {
                   },
                   { label: '整改责任人', value: issue.assignee || '未指派' },
                   { label: '整改期限', value: formatDateTime(issue.deadline) },
+                  { label: '剩余期限', value: <RemainingTag days={issue.remaining_days} /> },
+                  { label: '期限来源', value: issue.deadline_source },
                   {
                     label: '关联巡查记录',
                     value: issue.inspection_id ? `#${issue.inspection_id}` : '无',

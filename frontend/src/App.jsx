@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import Layout from './components/Layout.jsx';
 import DashboardPage from './pages/dashboard/DashboardPage.jsx';
+import HolidayCalendarPage from './pages/holidays/HolidayCalendarPage.jsx';
 import InspectionListPage from './pages/inspections/InspectionListPage.jsx';
 import IssueDetailPage from './pages/issues/IssueDetailPage.jsx';
 import IssueListPage from './pages/issues/IssueListPage.jsx';
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/inspections" element={<InspectionListPage />} />
         <Route path="/issues" element={<IssueListPage />} />
         <Route path="/issues/:issueId" element={<IssueDetailPage />} />
+        <Route path="/holidays" element={<HolidayCalendarPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

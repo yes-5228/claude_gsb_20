@@ -46,7 +46,14 @@ class IssueUpdate(BaseModel):
     category: IssueCategory | None = None
     severity: IssueSeverity | None = None
     assignee: str | None = Field(default=None, max_length=60)
-    deadline: datetime | None = None
+    deadline: datetime | None = Field(default=None, description="人工指定整改期限")
+    deadline_reason: str | None = Field(
+        default=None, max_length=500, description="人工调整期限的原因，调整期限时必填"
+    )
+    recalc_deadline: bool = Field(
+        default=False, description="按分类与严重程度规则重新推算期限（优先于 deadline）"
+    )
+    operator: str | None = Field(default=None, max_length=60, description="期限调整操作人")
     images: list[str] | None = None
 
 
@@ -56,6 +63,15 @@ class IssueStatusUpdate(BaseModel):
     to_status: IssueStatus = Field(description="目标状态")
     operator: str = Field(min_length=1, max_length=60, description="操作人")
     remark: str | None = Field(default=None, max_length=500, description="处理说明")
+
+
+class DeadlinePreviewOut(BaseModel):
+    """按分类与严重程度规则预览推算出的整改期限。"""
+
+    deadline: datetime
+    days: int = Field(description="规则天数，0 表示当天到期")
+    day_type: str = Field(description="计日方式：自然日 / 工作日")
+    description: str = Field(description="规则说明文案")
 
 
 class IssueOut(BaseModel):
@@ -75,6 +91,11 @@ class IssueOut(BaseModel):
     assignee: str
     report_time: datetime
     deadline: datetime | None = None
+    deadline_source: str = Field(default="自动推算", description="期限来源：自动推算 / 人工调整")
+    is_overdue: bool = Field(default=False, description="是否已超期（实时计算）")
+    remaining_days: int | None = Field(
+        default=None, description="剩余整改天数：0 今天到期，负数表示已超期天数"
+    )
     images: list[str] = Field(default_factory=list)
     closed_at: datetime | None = None
     created_at: datetime

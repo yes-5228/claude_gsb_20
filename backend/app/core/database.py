@@ -56,3 +56,22 @@ def init_db() -> None:
     from app import models  # noqa: F401  确保模型完成注册
 
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
+
+
+def _ensure_columns() -> None:
+    """为已存在的库补充后加的列（create_all 不会修改已有表）。"""
+    from sqlalchemy import inspect, text
+
+    additions = {
+        "issues": [
+            ("deadline_source", "VARCHAR(10) NOT NULL DEFAULT '自动推算'"),
+        ],
+    }
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, columns in additions.items():
+            existing = {column["name"] for column in inspector.get_columns(table)}
+            for name, ddl in columns:
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))

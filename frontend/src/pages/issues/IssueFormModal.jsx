@@ -7,7 +7,7 @@ import Field from '../../components/Field.jsx';
 import Modal from '../../components/Modal.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { useDictionaries } from '../../hooks/useDictionaries.js';
-import { toDateTimeInput } from '../../utils/format.js';
+import { formatDate } from '../../utils/format.js';
 
 export default function IssueFormModal({
   defaultRestroomId,
@@ -21,6 +21,8 @@ export default function IssueFormModal({
   const [inspections, setInspections] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [deadlineMode, setDeadlineMode] = useState('auto');
+  const [preview, setPreview] = useState(null);
   const [form, setForm] = useState({
     restroom_id: defaultRestroomId ? Number(defaultRestroomId) : '',
     inspection_id: defaultInspectionId ? Number(defaultInspectionId) : '',
@@ -30,7 +32,7 @@ export default function IssueFormModal({
     severity: '一般',
     reporter: '',
     assignee: '',
-    deadline: toDateTimeInput(new Date(Date.now() + 3 * 24 * 3600 * 1000)),
+    deadline: '',
     initial_remark: '',
   });
 
@@ -40,6 +42,23 @@ export default function IssueFormModal({
       .then(setRestrooms)
       .catch((err) => setError(err.message));
   }, []);
+
+  // 自动推算模式下，分类/严重程度变化时实时预览推算出的期限
+  useEffect(() => {
+    if (deadlineMode !== 'auto' || !form.category || !form.severity) return undefined;
+    let cancelled = false;
+    issueApi
+      .deadlinePreview({ category: form.category, severity: form.severity })
+      .then((data) => {
+        if (!cancelled) setPreview(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deadlineMode, form.category, form.severity]);
 
   // 切换公厕后重新加载该公厕的巡查记录，供关联选择
   useEffect(() => {
@@ -83,6 +102,10 @@ export default function IssueFormModal({
       setError('请填写问题标题');
       return;
     }
+    if (deadlineMode === 'manual' && !form.deadline) {
+      setError('手动指定模式下请选择整改期限');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -90,7 +113,11 @@ export default function IssueFormModal({
         ...form,
         restroom_id: Number(form.restroom_id),
         inspection_id: form.inspection_id ? Number(form.inspection_id) : null,
-        deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+        // 自动推算模式不传期限，由服务端按分类与严重程度规则计算
+        deadline:
+          deadlineMode === 'manual' && form.deadline
+            ? new Date(form.deadline).toISOString()
+            : null,
       });
       toast.success('问题已上报，进入待整改状态');
       onSaved();
@@ -163,8 +190,36 @@ export default function IssueFormModal({
         <Field label="整改责任人">
           <input value={form.assignee} onChange={setValue('assignee')} placeholder="保洁班组 / 责任人" />
         </Field>
-        <Field label="整改期限">
-          <input type="datetime-local" value={form.deadline} onChange={setValue('deadline')} />
+        <Field label="整改期限" full>
+          <div className="inline" style={{ gap: 16 }}>
+            <label className="radio-option">
+              <input
+                type="radio"
+                name="deadline-mode"
+                checked={deadlineMode === 'auto'}
+                onChange={() => setDeadlineMode('auto')}
+              />
+              自动推算
+            </label>
+            <label className="radio-option">
+              <input
+                type="radio"
+                name="deadline-mode"
+                checked={deadlineMode === 'manual'}
+                onChange={() => setDeadlineMode('manual')}
+              />
+              手动指定
+            </label>
+          </div>
+          {deadlineMode === 'auto' ? (
+            <span className="muted" style={{ fontSize: 12 }}>
+              {preview
+                ? `按「${form.category} · ${form.severity}」规则：${preview.description}，${formatDate(preview.deadline)} 到期`
+                : '按问题分类与严重程度规则自动计算'}
+            </span>
+          ) : (
+            <input type="datetime-local" value={form.deadline} onChange={setValue('deadline')} />
+          )}
         </Field>
         <Field label="问题描述" full>
           <textarea rows="3" value={form.description} onChange={setValue('description')} />

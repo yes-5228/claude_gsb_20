@@ -20,6 +20,7 @@ from app.schemas.stats import (
     NameValue,
     OverviewStats,
     RestroomRankItem,
+    StatusStat,
     TrendPoint,
 )
 from app.services import inspection_service, issue_service
@@ -77,12 +78,31 @@ def overview(db: Session) -> OverviewStats:
     )
 
 
-def issue_by_status(db: Session) -> list[NameValue]:
+def issue_by_status(db: Session) -> list[StatusStat]:
+    """各整改状态的问题数，以及每列中已超期的数量（随期限实时判定）。"""
+    now = datetime.now()
     rows = dict(
         db.execute(select(Issue.status, func.count()).group_by(Issue.status)).all()  # type: ignore[arg-type]
     )
-    ordered = list(IssueStatus)
-    return [NameValue(name=status.value, value=float(rows.get(status.value, 0))) for status in ordered]
+    overdue_rows = dict(
+        db.execute(
+            select(Issue.status, func.count())
+            .where(
+                Issue.deadline.is_not(None),
+                Issue.deadline < now,
+                Issue.status.in_(OPEN_ISSUE_STATUSES),
+            )
+            .group_by(Issue.status)
+        ).all()  # type: ignore[arg-type]
+    )
+    return [
+        StatusStat(
+            name=status.value,
+            value=float(rows.get(status.value, 0)),
+            overdue=int(overdue_rows.get(status.value, 0)),
+        )
+        for status in IssueStatus
+    ]
 
 
 def issue_by_severity(db: Session) -> list[NameValue]:

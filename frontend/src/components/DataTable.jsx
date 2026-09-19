@@ -23,10 +23,10 @@ export default function DataTable({ columns, rows, loading, error, emptyText = '
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={rowKey ? rowKey(row) : (row.id ?? index)}>
+            <tr key={rowKey ? rowKey(row, index) : (row.id ?? index)}>
               {columns.map((column) => (
                 <td key={column.key} className={column.wrap ? 'wrap' : undefined}>
-                  {column.render ? column.render(row) : row[column.key] ?? '-'}
+                  {column.render ? column.render(row, index) : row[column.key] ?? '-'}
                 </td>
               ))}
             </tr>

@@ -64,10 +64,3 @@ export function scoreTone(score) {
   if (score >= 70) return 'score-mid';
   return 'score-low';
 }
-
-/** 是否超期未整改。 */
-export function isOverdue(deadline, status) {
-  if (!deadline) return false;
-  if (['已完成', '已关闭'].includes(status)) return false;
-  return new Date(deadline).getTime() < Date.now();
-}

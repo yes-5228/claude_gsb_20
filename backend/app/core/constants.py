@@ -49,6 +49,56 @@ class IssueStatus(StrEnum):
     CLOSED = "已关闭"
 
 
+class DayType(StrEnum):
+    """整改期限的计日方式。"""
+
+    CALENDAR = "自然日"
+    WORKDAY = "工作日"
+
+
+class DeadlineSource(StrEnum):
+    """整改期限的来源：规则自动推算或人工调整。"""
+
+    AUTO = "自动推算"
+    MANUAL = "人工调整"
+
+
+# 整改期限推算规则：问题分类 -> 严重程度 -> (天数, 计日方式)
+# 紧急问题不分分类，一律当天到期（0 天）
+DEADLINE_RULES: dict[str, dict[str, tuple[int, DayType]]] = {
+    IssueCategory.CLEANING: {
+        IssueSeverity.NORMAL: (2, DayType.CALENDAR),
+        IssueSeverity.SERIOUS: (1, DayType.CALENDAR),
+        IssueSeverity.URGENT: (0, DayType.CALENDAR),
+    },
+    IssueCategory.CONSUMABLE: {
+        IssueSeverity.NORMAL: (2, DayType.CALENDAR),
+        IssueSeverity.SERIOUS: (1, DayType.CALENDAR),
+        IssueSeverity.URGENT: (0, DayType.CALENDAR),
+    },
+    IssueCategory.ODOR: {
+        IssueSeverity.NORMAL: (3, DayType.CALENDAR),
+        IssueSeverity.SERIOUS: (2, DayType.CALENDAR),
+        IssueSeverity.URGENT: (0, DayType.CALENDAR),
+    },
+    IssueCategory.FACILITY: {
+        IssueSeverity.NORMAL: (5, DayType.WORKDAY),
+        IssueSeverity.SERIOUS: (3, DayType.WORKDAY),
+        IssueSeverity.URGENT: (0, DayType.CALENDAR),
+    },
+    IssueCategory.SAFETY: {
+        IssueSeverity.NORMAL: (3, DayType.CALENDAR),
+        IssueSeverity.SERIOUS: (1, DayType.CALENDAR),
+        IssueSeverity.URGENT: (0, DayType.CALENDAR),
+    },
+    IssueCategory.OTHER: {
+        IssueSeverity.NORMAL: (5, DayType.CALENDAR),
+        IssueSeverity.SERIOUS: (3, DayType.CALENDAR),
+        IssueSeverity.URGENT: (0, DayType.CALENDAR),
+    },
+}
+
+
 # 整改流转规则：当前状态 -> 允许流转到的状态
 ISSUE_TRANSITIONS: dict[str, list[str]] = {
     IssueStatus.PENDING: [IssueStatus.PROCESSING, IssueStatus.CLOSED],

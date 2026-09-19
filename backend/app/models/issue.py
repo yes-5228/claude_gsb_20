@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.constants import IssueCategory, IssueSeverity, IssueStatus
+from app.core.constants import DeadlineSource, IssueCategory, IssueSeverity, IssueStatus
 from app.core.database import Base
 
 
@@ -40,6 +40,11 @@ class Issue(Base):
         DateTime, default=datetime.now, index=True, comment="上报时间"
     )
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="整改期限")
+    deadline_source: Mapped[str] = mapped_column(
+        String(10),
+        default=DeadlineSource.AUTO.value,
+        comment="期限来源：自动推算 / 人工调整",
+    )
     images: Mapped[list[str]] = mapped_column(JSON, default=list, comment="现场图片链接")
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="关闭时间")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

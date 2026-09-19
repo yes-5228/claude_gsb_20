@@ -17,6 +17,7 @@ export default function BarList({ items, tone = 'primary', emptyText = '暂无�
             />
           </div>
           <span className="bar-value">{item.value}</span>
+          <span className="bar-extra">{item.extra || ''}</span>
         </div>
       ))}
     </div>

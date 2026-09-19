@@ -11,6 +11,14 @@ class NameValue(BaseModel):
     value: float
 
 
+class StatusStat(BaseModel):
+    """整改状态分布：每个状态列的总数与其中已超期的数量。"""
+
+    name: str
+    value: float
+    overdue: int = 0
+
+
 class OverviewStats(BaseModel):
     restroom_total: int = 0
     restroom_open: int = 0
@@ -61,7 +69,7 @@ class DashboardStats(BaseModel):
     """看板一次拉取所需的全部指标。"""
 
     overview: OverviewStats
-    issue_by_status: list[NameValue] = Field(default_factory=list)
+    issue_by_status: list[StatusStat] = Field(default_factory=list)
     issue_by_category: list[CategoryStat] = Field(default_factory=list)
     issue_by_severity: list[NameValue] = Field(default_factory=list)
     inspection_trend: list[TrendPoint] = Field(default_factory=list)

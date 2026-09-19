@@ -603,7 +603,7 @@ table.data-table td.wrap {
 
 .bar-row {
   display: grid;
-  grid-template-columns: 96px 1fr 56px;
+  grid-template-columns: 96px 1fr 56px auto;
   align-items: center;
   gap: 10px;
   font-size: 13px;
@@ -625,6 +625,13 @@ table.data-table td.wrap {
 .bar-value {
   text-align: right;
   color: var(--text-muted);
+}
+
+.bar-extra {
+  min-width: 52px;
+  font-size: 12px;
+  color: var(--danger, #dc2626);
+  white-space: nowrap;
 }
 
 .trend-chart {
@@ -824,6 +831,19 @@ table.data-table td.wrap {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.radio-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.radio-option input {
+  width: auto;
+  margin: 0;
 }
 
 .section-title {

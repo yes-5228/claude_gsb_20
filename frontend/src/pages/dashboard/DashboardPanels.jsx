@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 
 import BarList from '../../components/BarList.jsx';
 import DataTable from '../../components/DataTable.jsx';
-import { ScorePill, SeverityTag, StatusTag } from '../../components/Tags.jsx';
+import { OverdueTag, RemainingTag, ScorePill, SeverityTag, StatusTag } from '../../components/Tags.jsx';
 import { formatDateTime } from '../../utils/format.js';
 
 const STATUS_COLORS = {
@@ -28,6 +28,7 @@ export function IssueStatusPanel({ items }) {
           name: item.name,
           value: item.value,
           color: STATUS_COLORS[item.name] || '#0f766e',
+          extra: item.overdue > 0 ? `超期 ${item.overdue}` : '',
         }))}
       />
     </section>
@@ -139,7 +140,21 @@ export function RecentIssuesPanel({ items }) {
           },
           { key: 'restroom', title: '公厕', render: (row) => row.restroom?.name ?? '-' },
           { key: 'severity', title: '程度', render: (row) => <SeverityTag severity={row.severity} /> },
-          { key: 'status', title: '状态', render: (row) => <StatusTag status={row.status} /> },
+          {
+            key: 'status',
+            title: '状态',
+            render: (row) => (
+              <span className="inline">
+                <StatusTag status={row.status} />
+                <OverdueTag overdue={row.is_overdue} />
+              </span>
+            ),
+          },
+          {
+            key: 'remaining_days',
+            title: '剩余期限',
+            render: (row) => <RemainingTag days={row.remaining_days} />,
+          },
           { key: 'report_time', title: '上报时间', render: (row) => formatDateTime(row.report_time) },
         ]}
         rows={items || []}
